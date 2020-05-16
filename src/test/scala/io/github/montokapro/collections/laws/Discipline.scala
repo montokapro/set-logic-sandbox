@@ -6,7 +6,6 @@ import Prop._
 import org.typelevel.discipline.Laws
 import cats.laws.IsEq
 import cats.kernel.Eq
-import cats.kernel.PartialOrder
 import cats.laws.discipline.catsLawsIsEqToProp
 
 trait FuzzySetTests[F[_]] extends Laws {
@@ -17,8 +16,7 @@ trait FuzzySetTests[F[_]] extends Laws {
     // ArbFA: Arbitrary[F[A]],
     // CogenA: Cogen[A],
     ArbAFA: Arbitrary[A => F[A]],
-    EqFA: Eq[F[A]],
-    PartialOrderFA: PartialOrder[A],
+    EqFA: Eq[F[A]]
   ): RuleSet =
     new DefaultRuleSet(
       name = "fuzzy set",

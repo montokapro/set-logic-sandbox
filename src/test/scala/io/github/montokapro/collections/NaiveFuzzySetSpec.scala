@@ -30,10 +30,29 @@ import cats.tests.CatsSuite
 // import cats.laws.discipline.arbitrary
 
 // import cats.instances.all._
-import cats.laws.discipline.arbitrary._
+// import cats.laws.discipline.arbitrary._
+
+
+import cats._
 
 class NaiveFuzzySetSpec extends CatsSuite {
-  checkAll("List", FuzzySetTests[List].fuzzySet) // Debug
+  implicit def eq[A: Eq]: Eq[FuzzySet[List]] = Eq.fromUniversalEquals
+
+  // import org.scalacheck.{Arbitrary, Gen}
+  // import io.github.montokapro.collections.NaiveFuzzySet._
+  // implicit def arb[A: Arbitrary]: Arbitrary[FuzzySet[List[A]]] =
+  //   Arbitrary(
+  //     Gen.oneOf(
+  //       fuzzyList.empty[A],
+  //       (
+  //         for {
+  //           a <- Arbitrary.arbitrary[A]
+  //         } yield fuzzyList.add(fuzzyList.empty[A], a)
+  //       )
+  //     )
+  //   )
+
+  // checkAll("List", FuzzySetTests[List].fuzzySet) // Debug
 
   // checkAll("Set", FuzzySetTests[Set].fuzzySet)
 }

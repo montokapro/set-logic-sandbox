@@ -2,8 +2,6 @@ package io.github.montokapro.collections.laws
 
 import io.github.montokapro.collections.FuzzySet
 
-import cats.kernel.PartialOrder
-
 import cats.laws.{IsEq, IsEqArrow}
 
 import org.typelevel.discipline.Laws
@@ -20,9 +18,11 @@ import org.scalacheck.Prop._
 import cats.kernel.instances.all._
 
 trait FuzzySetLaws[F[_]] extends Laws {
-  implicit override def F: FuzzySet[F]
+  // implicit override def F: FuzzySet[F]
 
-  def idempotentAdd[A: PartialOrder](a: A): IsEq[F[A]] =
+  implicit def F: FuzzySet[F]
+
+  def idempotentAdd[A](a: A): IsEq[F[A]] =
     F.add(F.add(F.empty[A], a), a) <-> F.add(F.empty[A], a)
 }
 
