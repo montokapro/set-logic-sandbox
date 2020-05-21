@@ -1,5 +1,6 @@
 val catsVersion = "2.1.1"
 val scalatestVersion = "3.0.5"
+val algebraVersion = "2.0.0"
 
 lazy val root = (project in file("."))
   .settings(
@@ -13,6 +14,8 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-testkit" % catsVersion % Test,
       "org.typelevel" %% "cats-testkit-scalatest" % "1.0.1" % Test,
       "org.typelevel" %% "discipline-scalatest" % "1.0.1" % Test,
+      "org.typelevel" %% "algebra" % algebraVersion,
+      "org.typelevel" %% "algebra-laws" % algebraVersion % Test,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.github.alexarchambault" %% "scalacheck-shapeless_1.14" % "1.2.3" % Test
     )
