@@ -123,6 +123,21 @@ class Mu[A](
   def one: Set[A] = Set(lattice.zero)
 }
 
+// scala> val mu = new Mu(Beta)
+// mu: io.github.montokapro.collections.Mu[Set[Int]] = io.github.montokapro.collections.Mu@47babb32
+
+// scala> val c = Set(Set(1, 2), Set(2, 3, 4))
+// c: scala.collection.immutable.Set[scala.collection.immutable.Set[Int]] = Set(Set(1, 2), Set(2, 3, 4))
+
+// scala> val d = Set(Set(1, 2, 3), Set(3, 4))
+// d: scala.collection.immutable.Set[scala.collection.immutable.Set[Int]] = Set(Set(1, 2, 3), Set(3, 4))
+
+// scala> mu.joinSemilattice.combineAll(Set(c, d))
+// res0: Set[Set[Int]] = Set(Set(3, 4), Set(1, 2))
+
+// scala> mu.meetSemilattice.combineAll(Set(c, d))
+// res1: Set[Set[Int]] = Set(Set(1, 2, 3), Set(2, 3, 4))
+
 object Functions {
 //   // import algebra.instances.list.catsKernelStdMonoidForList._
   import cats.Alternative
