@@ -33,40 +33,31 @@ object Gamma {
     val evidence: Eq[A]
   ) extends BoundedLattice[Tree[A]] {
     private val setLattice = algebra.instances.set.setLattice[Tree[A]]
+    private val setEq = cats.kernel.instances.set.catsKernelStdPartialOrderForSet[Tree[A]]
+
     import evidence._
 
-    // private def leafOr(lhs: Leaf[A], rhs: Leaf[A]): Tree[A] = (lhs, rhs) match {
-    //   case (Pos(a), Neg(b)) if eqv(a, b) => Or(setLattice.zero)
-    //   case (a, b) => Or(Set(a, b))
-    // }
-
-    // private def leafAnd(lhs: Leaf[A], rhs: Leaf[A]): Tree[A] = (lhs, rhs) match {
-    //   case (Pos(a), Neg(b)) if eqv(a, b) => And(setLattice.zero)
-    //   case (a, b) => And(Set(a, b))
-    // }
-
-    private def treeOr(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-      (lhs, rhs) match {
-        case (Pos(a), Neg(b)) if eqv(a, b) => Or(setLattice.zero)
-        case (Or(a), Or(b)) => Or(setLattice.or(a, b))
-        case (Or(a), b) => Or(setLattice.or(a, Set(b)))
-        case (a, Or(b)) => Or(setLattice.or(Set(a), b))
-        case (a, b) => Or(setLattice.or(Set(a), Set(b)))
-      }
-    }
-
-    def zero: Tree[A] = Or(setLattice.zero) // Everything matches
-    def one: Tree[A] = And(setLattice.zero) // Nothing matches
+    def one: Tree[A] = Or(setLattice.zero) // Everything matches
+    def zero: Tree[A] = And(setLattice.zero) // Nothing matches
 
     def join(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
+      def min(a: Set[Tree[A]], b: Set[Tree[A]]): Set[Tree[A]] =
+        setLattice.joinPartialOrder(setEq)
+          .pmin(a, b)
+          .getOrElse(setLattice.or(a, b))
+
       val set: Set[Tree[A]] = (lhs, rhs) match {
         case (Neg(a), Pos(b)) if eqv(a, b) => setLattice.zero
         case (Pos(a), Neg(b)) if eqv(a, b) => setLattice.zero
-        case (Or(a), Or(b)) => setLattice.or(a, b)
-        case (Or(a), b) => setLattice.or(a, Set(b))
-        case (a, Or(b)) => setLattice.or(Set(a), b)
-        case (a, b) => setLattice.or(Set(a), Set(b))
+        case (And(a), b) if (a.isEmpty) => Set(b)
+        case (a, And(b)) if (b.isEmpty) => Set(a)
+        case (Or(a), Or(b)) => min(a, b)
+        case (Or(a), b) => min(a, Set(b))
+        case (a, Or(b)) => min(Set(a), b)
+        case (a, b) => min(Set(a), Set(b))
       }
+
+      println(s"Join $lhs $rhs -> $set")
 
       // TODO - more efficient size predicate
       if (set.size == 1) {
@@ -77,14 +68,23 @@ object Gamma {
     }
 
     def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
+      def max(a: Set[Tree[A]], b: Set[Tree[A]]): Set[Tree[A]] =
+        setLattice.meetPartialOrder(setEq)
+          .pmin(a, b)
+          .getOrElse(setLattice.and(a, b))
+
       val set: Set[Tree[A]] = (lhs, rhs) match {
         case (Neg(a), Pos(b)) if eqv(a, b) => setLattice.zero
         case (Pos(a), Neg(b)) if eqv(a, b) => setLattice.zero
-        case (And(a), And(b)) => setLattice.and(a, b)
-        case (And(a), b) => setLattice.and(a, Set(b))
-        case (a, And(b)) => setLattice.and(Set(a), b)
-        case (a, b) => setLattice.and(Set(a), Set(b))
+        case (Or(a), b) if (a.isEmpty) => Set(b)
+        case (a, Or(b)) if (b.isEmpty) => Set(a)
+        case (And(a), And(b)) => max(a, b)
+        case (And(a), b) => max(a, Set(b))
+        case (a, And(b)) => max(Set(a), b)
+        case (a, b) => max(Set(a), Set(b))
       }
+
+      println(s"Meet $lhs $rhs -> $set")
 
       // TODO - more efficient size predicate
       if (set.size == 1) {

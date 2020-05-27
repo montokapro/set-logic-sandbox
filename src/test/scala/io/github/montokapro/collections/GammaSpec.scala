@@ -26,17 +26,17 @@ class GammaSpec extends FunSpec {
   }
 
   describe("meet") {
-    it("should combine bounds") {
+    it("should combine bounds 2") {
       assert(meet(zero, one) == zero)
       assert(meet(one, zero) == zero)
     }
 
-    it("should combine zero") {
+    it("should combine zero 2") {
       assert(meet(zero, Gamma.Pos(1)) == zero)
       assert(meet(Gamma.Pos(1), zero) == zero)
     }
 
-    it("should combine one") {
+    it("should combine one 2") {
       assert(meet(one, Gamma.Pos(1)) == Gamma.Pos(1))
       assert(meet(Gamma.Pos(1), one) == Gamma.Pos(1))
     }
