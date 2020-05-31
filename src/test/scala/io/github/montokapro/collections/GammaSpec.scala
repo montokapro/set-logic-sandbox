@@ -23,22 +23,69 @@ class GammaSpec extends FunSpec {
       assert(join(one, Gamma.Pos(1)) == one)
       assert(join(Gamma.Pos(1), one) == one)
     }
+
+    it("should combine opposites") {
+      assert(join(Gamma.Pos(1), Gamma.Neg(1)) == one)
+      assert(join(Gamma.Neg(1), Gamma.Pos(1)) == one)
+      assert(join(Gamma.Pos(1), Gamma.Or(Set(Gamma.Neg(1), Gamma.Neg(2)))) == one)
+      assert(join(Gamma.Or(Set(Gamma.Neg(1), Gamma.Neg(2))), Gamma.Pos(1)) == one)
+      assert(join(Gamma.Or(Set(Gamma.Pos(1), Gamma.Pos(2))), Gamma.Neg(1)) == one)
+      assert(join(Gamma.Neg(1), Gamma.Or(Set(Gamma.Pos(1), Gamma.Pos(2)))) == one)
+    }
+
+    // TODO - what should these evaluate too?
+    it("should combine ands") {
+      def f(i: Int): Gamma.Tree[Int] = Gamma.And((1 to i).toSet[Int].map(Gamma.Pos(_)))
+      def g(i: Int): Gamma.Tree[Int] = Gamma.And((1 to i).toSet[Int].map(Gamma.Neg(_)))
+
+      assert(join(f(2), f(3)) == f(2))
+      assert(join(f(3), f(2)) == f(2))
+      assert(join(f(0), f(2)) == f(0))
+      assert(join(f(2), f(0)) == f(0))
+
+      // TODO
+      assert(join(g(2), g(3)) == g(3))
+      assert(join(g(3), g(2)) == g(3))
+      assert(join(g(0), g(2)) == g(2))
+      assert(join(g(2), g(0)) == g(2))
+    }
   }
 
   describe("meet") {
-    it("should combine bounds 2") {
+    it("should combine bounds") {
       assert(meet(zero, one) == zero)
       assert(meet(one, zero) == zero)
     }
 
-    it("should combine zero 2") {
+    it("should combine zero") {
       assert(meet(zero, Gamma.Pos(1)) == zero)
       assert(meet(Gamma.Pos(1), zero) == zero)
     }
 
-    it("should combine one 2") {
+    it("should combine one") {
       assert(meet(one, Gamma.Pos(1)) == Gamma.Pos(1))
       assert(meet(Gamma.Pos(1), one) == Gamma.Pos(1))
+    }
+
+    it("should combine opposites") {
+      assert(meet(Gamma.Pos(1), Gamma.Neg(1)) == zero)
+      assert(meet(Gamma.Neg(1), Gamma.Pos(1)) == zero)
+      assert(meet(Gamma.Pos(1), Gamma.And(Set(Gamma.Neg(1), Gamma.Neg(2)))) == zero)
+      assert(meet(Gamma.And(Set(Gamma.Neg(1), Gamma.Neg(2))), Gamma.Pos(1)) == zero)
+      assert(meet(Gamma.And(Set(Gamma.Pos(1), Gamma.Pos(2))), Gamma.Neg(1)) == zero)
+      assert(meet(Gamma.Neg(1), Gamma.And(Set(Gamma.Pos(1), Gamma.Pos(2)))) == zero)
+    }
+
+    // TODO - what should these evaluate too?
+    it("should combine ors") {
+      assert(meet(Gamma.Pos(1), Gamma.Or(Set(Gamma.Neg(1), Gamma.Neg(2)))) == zero)
+      assert(meet(Gamma.Or(Set(Gamma.Neg(1), Gamma.Neg(2))), Gamma.Pos(1)) == zero)
+      assert(meet(Gamma.Or(Set(Gamma.Pos(1), Gamma.Pos(2))), Gamma.Neg(1)) == zero)
+      assert(meet(Gamma.Neg(1), Gamma.Or(Set(Gamma.Pos(1), Gamma.Pos(2)))) == zero)
+      assert(join(Gamma.Or(Set(Gamma.Pos(1), Gamma.Pos(2))), Gamma.Pos(1)) == zero)
+      assert(join(Gamma.Pos(1), Gamma.Or(Set(Gamma.Pos(1), Gamma.Pos(2)))) == zero)
+      assert(join(Gamma.Or(Set(Gamma.Neg(1), Gamma.Neg(2))), Gamma.Neg(1)) == zero)
+      assert(join(Gamma.Neg(1), Gamma.Or(Set(Gamma.Neg(1), Gamma.Neg(2)))) == zero)      
     }
   }
 

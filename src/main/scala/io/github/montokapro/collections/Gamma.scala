@@ -6,6 +6,7 @@ import algebra.lattice.GenBool
 import cats.kernel.BoundedSemilattice
 import cats.kernel.Eq
 import cats.kernel.PartialOrder
+import cats.kernel.Semilattice
 import scala.annotation.tailrec
 
 object Gamma {
@@ -29,6 +30,94 @@ object Gamma {
 
   case class And[A](values: Set[Tree[A]]) extends Branch[A]
 
+  object Or {
+    def create[A]: Tree[A] => Or[A] = {
+      case or@Or(_) => or
+      case tree => Or(Set(tree))
+    }
+
+    import cats.Applicative
+    import cats.Traverse
+  //   val traverse[A]: Traverse[Or[A]] = new Traverse[Or[A]] {
+  //     def traverse[G[_]: Applicative, A, B](fa: Or[A])(f: A => G[B])(
+  //       implicit G: Applicative[G]
+  //     ): G[Or[B]] = fa match {
+  //       case Or(values) => values.map(Applicative[F].map(f(v), l.traverse(f), r.traverse(f))(Tree.Branch(_, _, _))
+  //       case _ => Applicative[F].pure(fa)
+  //     }
+  //   }
+  }
+
+  object And {
+    def create[A]: Tree[A] => And[A] = {
+      case and@And(_) => and
+      case tree => And(Set(tree))
+    }
+  }
+
+  // TODO: compose this with toSet functions
+  private def compress[A](a: A, b: A)(
+    implicit
+    semilattice: Semilattice[A],
+    partialOrder: PartialOrder[A]
+  ): A = {
+    partialOrder.pmin(a, b).getOrElse(semilattice.combine(a, b))
+  }
+
+  class OrLattice[A](
+    val evidence: Eq[A]
+  ) extends GenBool[Or[A]] {
+    private val setLattice = algebra.instances.set.setLattice[Tree[A]]
+    private val setEq = cats.kernel.instances.set.catsKernelStdPartialOrderForSet[Tree[A]]
+
+    import evidence._
+
+    def zero: Or[A] = Or(setLattice.zero)
+
+    def or(lhs: Or[A], rhs: Or[A]): Or[A] = {
+      implicit val semilattice = setLattice.meetSemilattice
+      implicit val partialOrder = setLattice.meetPartialOrder(setEq)
+
+      Or(compress(lhs.values, rhs.values))
+    }
+
+    def and(lhs: Or[A], rhs: Or[A]): Or[A] = {
+      implicit val semilattice = setLattice.joinSemilattice
+      implicit val partialOrder = setLattice.joinPartialOrder(setEq)
+
+      Or(compress(lhs.values, rhs.values))
+    }
+
+    def without(lhs: Or[A], rhs: Or[A]): Or[A] = ???
+  }
+
+  class AndLattice[A](
+    val evidence: Eq[A]
+  ) extends GenBool[And[A]] {
+    private val setLattice = algebra.instances.set.setLattice[Tree[A]]
+    private val setEq = cats.kernel.instances.set.catsKernelStdPartialOrderForSet[Tree[A]]
+
+    import evidence._
+
+    def zero: And[A] = And(setLattice.zero)
+
+    def or(lhs: And[A], rhs: And[A]): And[A] = {
+      implicit val semilattice = setLattice.joinSemilattice
+      implicit val partialOrder = setLattice.joinPartialOrder(setEq)
+
+      And(compress(lhs.values, rhs.values))
+    }
+
+    def and(lhs: And[A], rhs: And[A]): And[A] = {
+      implicit val semilattice = setLattice.meetSemilattice
+      implicit val partialOrder = setLattice.meetPartialOrder(setEq)
+
+      And(compress(lhs.values, rhs.values))
+    }
+
+    def without(lhs: And[A], rhs: And[A]): And[A] = ???
+  }
+
   class TreeLattice[A](
     val evidence: Eq[A]
   ) extends BoundedLattice[Tree[A]] {
@@ -41,47 +130,33 @@ object Gamma {
     def zero: Tree[A] = And(setLattice.zero) // Nothing matches
 
     def join(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-      def min(a: Set[Tree[A]], b: Set[Tree[A]]): Set[Tree[A]] =
-        setLattice.joinPartialOrder(setEq)
-          .pmin(a, b)
-          .getOrElse(setLattice.or(a, b))
+      implicit val lattice = new OrLattice(evidence)
 
-      val set: Set[Tree[A]] = (lhs, rhs) match {
-        case (Neg(a), Pos(b)) if eqv(a, b) => setLattice.zero
-        case (Pos(a), Neg(b)) if eqv(a, b) => setLattice.zero
-        case (And(a), b) if (a.isEmpty) => Set(b)
-        case (a, And(b)) if (b.isEmpty) => Set(a)
-        case (Or(a), Or(b)) => min(a, b)
-        case (Or(a), b) => min(a, Set(b))
-        case (a, Or(b)) => min(Set(a), b)
-        case (a, b) => min(Set(a), Set(b))
-      }
+      val or = lattice.join(Or.create(lhs), Or.create(rhs))
 
-      println(s"Join $lhs $rhs -> $set")
+      println(s"Join $lhs $rhs -> $or")
 
       // TODO - more efficient size predicate
-      if (set.size == 1) {
-        set.head
+      if (or.values.size == 1) {
+        or.values.head
       } else {
-        Or(set)
+        or
       }
     }
 
     def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-      def max(a: Set[Tree[A]], b: Set[Tree[A]]): Set[Tree[A]] =
-        setLattice.meetPartialOrder(setEq)
-          .pmin(a, b)
-          .getOrElse(setLattice.and(a, b))
+      implicit val semilattice = setLattice.meetSemilattice
+      implicit val partialOrder = setLattice.meetPartialOrder(setEq)
 
       val set: Set[Tree[A]] = (lhs, rhs) match {
         case (Neg(a), Pos(b)) if eqv(a, b) => setLattice.zero
         case (Pos(a), Neg(b)) if eqv(a, b) => setLattice.zero
         case (Or(a), b) if (a.isEmpty) => Set(b)
         case (a, Or(b)) if (b.isEmpty) => Set(a)
-        case (And(a), And(b)) => max(a, b)
-        case (And(a), b) => max(a, Set(b))
-        case (a, And(b)) => max(Set(a), b)
-        case (a, b) => max(Set(a), Set(b))
+        case (And(a), And(b)) => compress(a, b)
+        case (And(a), b) => compress(a, Set(b))
+        case (a, And(b)) => compress(Set(a), b)
+        case (a, b) => compress(Set(a), Set(b))
       }
 
       println(s"Meet $lhs $rhs -> $set")
