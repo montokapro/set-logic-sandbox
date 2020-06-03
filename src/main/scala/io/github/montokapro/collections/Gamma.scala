@@ -36,16 +36,21 @@ object Gamma {
       case tree => Or(Set(tree))
     }
 
-    import cats.Applicative
-    import cats.Traverse
-  //   val traverse[A]: Traverse[Or[A]] = new Traverse[Or[A]] {
-  //     def traverse[G[_]: Applicative, A, B](fa: Or[A])(f: A => G[B])(
-  //       implicit G: Applicative[G]
-  //     ): G[Or[B]] = fa match {
-  //       case Or(values) => values.map(Applicative[F].map(f(v), l.traverse(f), r.traverse(f))(Tree.Branch(_, _, _))
-  //       case _ => Applicative[F].pure(fa)
-  //     }
-  //   }
+    def flatten[A](values: Set[Tree[A]]): Set[Tree[A]] = {
+      @tailrec
+      def loop(
+        open: List[Tree[A]],
+        closed: Set[Tree[A]]): Set[Tree[A]] =
+        open match {
+          case Or(values) :: next =>
+            loop(values.toList ++ next, closed)
+          case head :: next =>
+            loop(next, closed + head)
+          case Nil =>
+            closed
+        }
+      loop(values.toList, Set.empty)
+    }
   }
 
   object And {
@@ -53,6 +58,29 @@ object Gamma {
       case and@And(_) => and
       case tree => And(Set(tree))
     }
+
+    def flatten[A](values: Set[Tree[A]]): Set[Tree[A]] = {
+      @tailrec
+      def loop(
+        open: List[Tree[A]],
+        closed: Set[Tree[A]]): Set[Tree[A]] =
+        open match {
+          case And(values) :: next =>
+            loop(values.toList ++ next, closed)
+          case head :: next =>
+            loop(next, closed + head)
+          case Nil =>
+            closed
+        }
+      loop(values.toList, Set.empty)
+    }
+  }
+
+  object Tree {
+    def neg[A](value: A): Tree[A] = Neg(value)
+    def pos[A](value: A): Tree[A] = Pos(value)
+    def or[A](values: Set[Tree[A]]): Tree[A] = Or(values)
+    def and[A](values: Set[Tree[A]]): Tree[A] = And(values)
   }
 
   // TODO: compose this with toSet functions
@@ -62,6 +90,40 @@ object Gamma {
     partialOrder: PartialOrder[A]
   ): A = {
     partialOrder.pmin(a, b).getOrElse(semilattice.combine(a, b))
+  }
+
+  class BranchLattice[A](
+    val evidence: Eq[A]
+  ) extends BoundedLattice[Tree[A]] {
+    private val setLattice = algebra.instances.set.setLattice[Tree[A]]
+    private val setEq = cats.kernel.instances.set.catsKernelStdPartialOrderForSet[Tree[A]]
+
+    private def compress[A](a: A, b: A)(
+      implicit
+      semilattice: Semilattice[A],
+      partialOrder: PartialOrder[A]
+    ): A = {
+      partialOrder.pmin(a, b).getOrElse(semilattice.combine(a, b))
+    }
+
+    import evidence._
+
+    def one: Tree[A] = And(setLattice.zero) // Everything matches
+    def zero: Tree[A] = Or(setLattice.zero) // Nothing matches
+
+    def join(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
+      implicit val semilattice = setLattice.joinSemilattice
+      implicit val partialOrder = setLattice.meetSemilattice.asJoinPartialOrder(setEq)
+
+      Or(compress(And.create(lhs).values, And.create(rhs).values))
+    }
+
+    def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
+      implicit val semilattice = setLattice.joinSemilattice
+      implicit val partialOrder = setLattice.joinSemilattice.asJoinPartialOrder(setEq)
+
+      And(compress(Or.create(lhs).values, Or.create(rhs).values))
+    }
   }
 
   class OrLattice[A](

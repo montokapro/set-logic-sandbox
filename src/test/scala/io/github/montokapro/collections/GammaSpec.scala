@@ -4,11 +4,135 @@ import org.scalatest.FunSpec
 import cats.kernel.instances.int._
 
 class GammaSpec extends FunSpec {
-  val treeLattice = new Gamma.TreeLattice(cats.kernel.instances.int.catsKernelStdOrderForInt)
+  import Gamma._
 
-  import treeLattice._
+  val treeLattice = new TreeLattice(cats.kernel.instances.int.catsKernelStdOrderForInt)
+  val branchLattice = new BranchLattice(cats.kernel.instances.int.catsKernelStdOrderForInt)
+
+  describe("or") {
+    import Tree._
+    it("should flatten") {
+      val actual = Or.flatten(Set(
+        pos(1),
+        or(Set(
+          pos(2),
+          pos(3),
+          or(Set(
+            pos(4),
+            pos(5)
+          )),
+          and(Set(
+            pos(6),
+            pos(7)
+          ))
+        ))
+      ))
+      val expected = Set(1, 2, 3, 4, 5).map(pos(_)) + and(Set(6, 7).map(pos(_)))
+      assert(actual == expected)
+    }
+
+    it("should compress") {
+      import branchLattice._
+      val actual = meet(
+        pos(1),
+        or(Set(
+          pos(1),
+          pos(2)
+        ))
+      )
+      val expected =
+        and(Set(
+          pos(1)
+        ))
+      assert(actual == expected)
+    }
+
+    it("should compress all") {
+      val actual = branchLattice.joinSemilattice.combineAll(Set(
+        pos(1),
+        and(Set(
+          pos(1),
+          pos(2)
+        )),
+        pos(3)
+      ))
+      val expected = or(Set(
+        and(Set(
+          pos(1),
+        )),
+        and(Set(
+          pos(3)
+        ))
+      ))
+      assert(actual == expected)
+    }
+  }
+
+  describe("and") {
+    import Tree._
+    it("should flatten") {
+      val actual = And.flatten(Set(
+        pos(1),
+        and(Set(
+          pos(2),
+          pos(3),
+          and(Set(
+            pos(4),
+            pos(5)
+          )),
+          or(Set(
+            pos(6),
+            pos(7)
+          ))
+        ))
+      ))
+      val expected = Set(1, 2, 3, 4, 5).map(pos(_)) + or(Set(6, 7).map(pos(_)))
+      assert(actual == expected)
+    }
+
+    import branchLattice._
+    it("should compress") {
+      val actual = join(
+        pos(1),
+        and(Set(
+          pos(1),
+          pos(2)
+        ))
+      )
+      val expected = // and(Set(
+        or(Set(
+          pos(1),
+          pos(2)
+        ))
+      // ))
+      assert(actual == expected)
+    }
+
+    it("should compress all") {
+      val actual = branchLattice.meetSemilattice.combineAll(Set(
+        pos(1),
+        and(Set(
+          pos(1),
+          pos(2)
+        )),
+        pos(3)
+      ))
+      val expected = and(Set( // Should be the empty set for ids, this for props
+        or(Set(
+          pos(1),
+          pos(2)
+        )),
+        or(Set(
+          pos(3)
+        ))
+      ))
+      assert(actual == expected)
+    }
+  }
 
   describe("join") {
+    import treeLattice._
+
     it("should combine bounds") {
       assert(join(zero, one) == one)
       assert(join(one, zero) == one)
@@ -52,6 +176,8 @@ class GammaSpec extends FunSpec {
   }
 
   describe("meet") {
+    import treeLattice._
+
     it("should combine bounds") {
       assert(meet(zero, one) == zero)
       assert(meet(one, zero) == zero)
