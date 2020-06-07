@@ -127,7 +127,7 @@ object Epsilon {
       And(flatten(tree.values))
 
     implicit def partialOrder[A]: PartialOrder[And[A]] =
-      PartialOrder.reverse(PartialOrder.by((and: And[A]) => and.values)(algebra.instances.set.catsKernelStdPartialOrderForSet[Tree[A]]))
+      PartialOrder.by((and: And[A]) => and.values)(algebra.instances.set.catsKernelStdPartialOrderForSet[Tree[A]])
   }
 
   // First pass before a foldable lattice
@@ -170,7 +170,7 @@ object Epsilon {
 
     def meet(a: Tree[A], b: Tree[A]): Tree[A] = {
       And(
-        deepSetLattice.join(
+        deepSetLattice.meet(
           And.create(a).flatten.values.map(Or.create(_).flatten),
           And.create(b).flatten.values.map(Or.create(_).flatten)
         ).map(Or.create)
