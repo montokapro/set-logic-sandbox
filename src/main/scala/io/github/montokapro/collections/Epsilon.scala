@@ -6,6 +6,7 @@ import cats.{Applicative, Traverse}
 import cats.Functor
 import cats.kernel.Eq
 import cats.kernel.PartialOrder
+import algebra.lattice.Lattice
 
 object Epsilon {
   class EqPartialOrder[A](eq: Eq[A]) extends PartialOrder[A] {
@@ -21,9 +22,13 @@ object Epsilon {
     def values: Set[Tree[A]]
   }
 
-  final case class Or[A](values: Set[Tree[A]]) extends Branch[A]
+  final case class Or[A](values: Set[Tree[A]]) extends Branch[A] {
+    def flatten: Or[A] = Or(Or.flatten(values))
+  }
 
-  final case class And[A](values: Set[Tree[A]]) extends Branch[A]
+  final case class And[A](values: Set[Tree[A]]) extends Branch[A] {
+    def flatten: And[A] = And(And.flatten(values))
+  }
 
   object Tree {
     def leaf[A](value: A): Tree[A] = Leaf(value)
@@ -32,7 +37,7 @@ object Epsilon {
 
     implicit val functor: Functor[Tree] =
       new Functor[Tree] {
-        import cats.instances.set._
+        // import cats.instances.set._
 
         def map[A, B](tree: Tree[A])(f: A => B): Tree[B] =
           tree match {
@@ -44,6 +49,27 @@ object Epsilon {
               Leaf(f(value))
           }
       }
+
+    // Assumes x and y are reduced
+    implicit def partialOrder[A]: PartialOrder[Tree[A]] =
+      new PartialOrder[Tree[A]] {
+        def partialCompare(x: Tree[A], y: Tree[A]): Double =
+          (x, y) match {
+            case (lhs: Or[A], rhs: Or[A]) =>
+              Or.partialOrder.partialCompare(lhs, rhs)
+            case (lhs: And[A], rhs: And[A]) =>
+              And.partialOrder.partialCompare(lhs, rhs)
+            case (lhs: Leaf[A], rhs: Leaf[A]) =>
+              Leaf.partialOrder.partialCompare(lhs, rhs)
+            case _ =>
+              Double.NaN
+          }
+      }
+  }
+
+  object Leaf {
+    implicit def partialOrder[A]: PartialOrder[Leaf[A]] =
+      PartialOrder.by((leaf: Leaf[A]) => leaf.value)(new EqPartialOrder(Eq.fromUniversalEquals))
   }
 
   object Or {
@@ -70,6 +96,9 @@ object Epsilon {
 
     def flatten[A](tree: Or[A]): Or[A] =
       Or(flatten(tree.values))
+
+    implicit def partialOrder[A]: PartialOrder[Or[A]] =
+      PartialOrder.by((or: Or[A]) => or.values)(algebra.instances.set.catsKernelStdPartialOrderForSet[Tree[A]])
   }
 
   object And {
@@ -96,7 +125,65 @@ object Epsilon {
 
     def flatten[A](tree: And[A]): And[A] =
       And(flatten(tree.values))
+
+    implicit def partialOrder[A]: PartialOrder[And[A]] =
+      PartialOrder.reverse(PartialOrder.by((and: And[A]) => and.values)(algebra.instances.set.catsKernelStdPartialOrderForSet[Tree[A]]))
   }
+
+  // First pass before a foldable lattice
+  class DeepSetLattice[A](
+    partialOrder: PartialOrder[A]
+  ) extends Lattice[Set[A]] {
+    private def reduce(po: PartialOrder[A])(fa: Set[A], a: A): Set[A] =
+      fa.filter(po.lteqv(_, a))
+
+    def join(a: Set[A], b: Set[A]): Set[A] = {
+      def reduce(po: PartialOrder[A])(fa: Set[A], a: A): Set[A] =
+        fa.filterNot(po.gt(_, a))
+
+      def infininum = reduce(partialOrder) _
+
+      a.foldLeft(b)(infininum) | b.foldLeft(a)(infininum)
+    }
+
+    def meet(a: Set[A], b: Set[A]): Set[A] = {
+      def reduce(po: PartialOrder[A])(fa: Set[A], a: A): Set[A] =
+        fa.filter(po.lteqv(_, a))
+
+      def supremum = reduce(partialOrder) _
+
+      a.foldLeft(b)(supremum) | b.foldLeft(a)(supremum)
+    }
+  }
+
+  class TreeLattice[A] extends Lattice[Tree[A]] {
+    private val deepSetLattice = new DeepSetLattice(Tree.partialOrder[A])
+
+    def join(a: Tree[A], b: Tree[A]): Tree[A] = {
+      Or(
+        deepSetLattice.join(
+          Or.create(a).flatten.values.map(And.create(_).flatten),
+          Or.create(b).flatten.values.map(And.create(_).flatten)
+        ).map(And.create)
+      )
+    }
+
+    def meet(a: Tree[A], b: Tree[A]): Tree[A] = {
+      And(
+        deepSetLattice.join(
+          And.create(a).flatten.values.map(Or.create(_).flatten),
+          And.create(b).flatten.values.map(Or.create(_).flatten)
+        ).map(Or.create)
+      )
+    }
+  }
+
+// From algebra:
+// class SetBoolRng[A] extends BoolRng[Set[A]] {
+//   def zero: Set[A] = Set.empty
+//   def plus(x: Set[A], y: Set[A]): Set[A] = (x -- y) | (y -- x) // this is xor - Hey! this looks a lot like the reduce code we wrote
+//   def times(x: Set[A], y: Set[A]): Set[A] = x & y
+// }
 
   // class NestedLattice[F[_], A](
   //   implicit
@@ -136,7 +223,7 @@ object Epsilon {
   //   def join(a: Set[Set[Int]], b: Set[Set[Int]]): Set[Set[Int]] = {
   //     def reduce(acc: Set[Set[Int]], set: Set[Int]) = acc.filterNot(_ > set)
 
-  //     a.foldLeft(b)(reduce) | b.foldLeft(a)(reduce)
+  //     a.foldLeft(b)(reduce) | b.foldLeft(a)(reduce) // This is xor!!!
   //   }
 
 

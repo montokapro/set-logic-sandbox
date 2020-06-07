@@ -196,7 +196,7 @@ object Gamma {
 
       val or = lattice.join(Or.create(lhs), Or.create(rhs))
 
-      println(s"Join $lhs $rhs -> $or")
+      // println(s"Join $lhs $rhs -> $or")
 
       // TODO - more efficient size predicate
       if (or.values.size == 1) {
@@ -221,7 +221,7 @@ object Gamma {
         case (a, b) => compress(Set(a), Set(b))
       }
 
-      println(s"Meet $lhs $rhs -> $set")
+      // println(s"Meet $lhs $rhs -> $set")
 
       // TODO - more efficient size predicate
       if (set.size == 1) {
