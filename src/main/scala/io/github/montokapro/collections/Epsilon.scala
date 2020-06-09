@@ -37,8 +37,6 @@ object Epsilon {
 
     implicit val functor: Functor[Tree] =
       new Functor[Tree] {
-        // import cats.instances.set._
-
         def map[A, B](tree: Tree[A])(f: A => B): Tree[B] =
           tree match {
             case Or(values) =>
@@ -59,12 +57,53 @@ object Epsilon {
               Or.partialOrder.partialCompare(lhs, rhs)
             case (lhs: And[A], rhs: And[A]) =>
               And.partialOrder.partialCompare(lhs, rhs)
+            case (lhs: Or[A], rhs: Leaf[A]) =>
+              Or.partialOrder.partialCompare(lhs, Or.create(rhs))
+            case (lhs: And[A], rhs: Leaf[A]) =>
+              And.partialOrder.partialCompare(lhs, And.create(rhs))
+            case (lhs: Leaf[A], rhs: Or[A]) =>
+              Or.partialOrder.partialCompare(Or.create(lhs), rhs)
+            case (lhs: Leaf[A], rhs: And[A]) =>
+              And.partialOrder.partialCompare(And.create(lhs), rhs)
             case (lhs: Leaf[A], rhs: Leaf[A]) =>
               Leaf.partialOrder.partialCompare(lhs, rhs)
             case _ =>
               Double.NaN
           }
       }
+
+    def flatten[A](tree: Tree[A]): Tree[A] = {
+      tree match {
+        case (Or(values)) =>
+          val set = Or.flatten(values).map(flatten)
+          if (set.size == 1) {
+            set.head
+          } else {
+            or(set)
+          }
+        case (And(values)) =>
+          val set = And.flatten(values).map(flatten)
+          if (set.size == 1) {
+            set.head
+          } else {
+            and(set)
+          }
+        case (leaf: Leaf[A]) =>
+          leaf
+      }
+    }
+
+
+    def reduce[A](tree: Tree[A]): Tree[A] = {
+      tree match {
+        case (or: Or[A]) =>
+          or
+        case (and: And[A]) =>
+          and
+        case (leaf: Leaf[A]) =>
+          leaf
+      }
+    }
   }
 
   object Leaf {
@@ -98,7 +137,19 @@ object Epsilon {
       Or(flatten(tree.values))
 
     implicit def partialOrder[A]: PartialOrder[Or[A]] =
-      PartialOrder.by((or: Or[A]) => or.values)(algebra.instances.set.catsKernelStdPartialOrderForSet[Tree[A]])
+      new PartialOrder[Or[A]] {
+        def partialCompare(a: Or[A], b: Or[A]): Double = {
+          def reduce(fa: Set[Tree[A]], a: Tree[A]): Set[Tree[A]] =
+            fa.filterNot(Tree.partialOrder.gteqv(_, a))
+
+          (b.values.foldLeft(a.values)(reduce).isEmpty, a.values.foldLeft(b.values)(reduce).isEmpty) match {
+            case (true, true) => 0.0
+            case (false, false) => Double.NaN
+            case (true, false) => -1.0
+            case (false, true) => 1.0
+          }
+        }
+      }
   }
 
   object And {
@@ -107,6 +158,8 @@ object Epsilon {
       case tree => And(Set(tree))
     }
 
+    // This is correct for properties but incorrect for ids
+    // this does set union and not intersection
     def flatten[A](values: Set[Tree[A]]): Set[Tree[A]] = {
       @tailrec
       def loop(
@@ -127,7 +180,19 @@ object Epsilon {
       And(flatten(tree.values))
 
     implicit def partialOrder[A]: PartialOrder[And[A]] =
-      PartialOrder.by((and: And[A]) => and.values)(algebra.instances.set.catsKernelStdPartialOrderForSet[Tree[A]])
+      new PartialOrder[And[A]] {
+        def partialCompare(a: And[A], b: And[A]): Double = {
+          def reduce(fa: Set[Tree[A]], a: Tree[A]): Set[Tree[A]] =
+            fa.filterNot(Tree.partialOrder.gteqv(_, a))
+
+          (b.values.foldLeft(a.values)(reduce).isEmpty, a.values.foldLeft(b.values)(reduce).isEmpty) match {
+            case (true, true) => 0.0
+            case (false, false) => Double.NaN
+            case (true, false) => -1.0
+            case (false, true) => 1.0
+          }
+        }
+      }
   }
 
   // First pass before a foldable lattice
@@ -157,211 +222,26 @@ object Epsilon {
   }
 
   class TreeLattice[A] extends Lattice[Tree[A]] {
-    private val deepSetLattice = new DeepSetLattice(Tree.partialOrder[A])
-
+    private val joinLattice = new DeepSetLattice(Tree.partialOrder[A])
     def join(a: Tree[A], b: Tree[A]): Tree[A] = {
       Or(
-        deepSetLattice.join(
+        joinLattice.join(
           Or.create(a).flatten.values.map(And.create(_).flatten),
           Or.create(b).flatten.values.map(And.create(_).flatten)
         ).map(And.create)
       )
     }
 
+    // This is correct for properties but incorrect for ids
+    // this does set union and not intersection
+    private val meetLattice = new DeepSetLattice(PartialOrder.reverse(Tree.partialOrder[A]))
     def meet(a: Tree[A], b: Tree[A]): Tree[A] = {
       And(
-        deepSetLattice.meet(
+        meetLattice.join(
           And.create(a).flatten.values.map(Or.create(_).flatten),
           And.create(b).flatten.values.map(Or.create(_).flatten)
         ).map(Or.create)
       )
     }
   }
-
-// From algebra:
-// class SetBoolRng[A] extends BoolRng[Set[A]] {
-//   def zero: Set[A] = Set.empty
-//   def plus(x: Set[A], y: Set[A]): Set[A] = (x -- y) | (y -- x) // this is xor - Hey! this looks a lot like the reduce code we wrote
-//   def times(x: Set[A], y: Set[A]): Set[A] = x & y
-// }
-
-  // class NestedLattice[F[_], A](
-  //   implicit
-  //   // evidence: UnorderedFoldable[F[_]],
-  //   outer: BoundedSemilattice[F[A]],
-  //   inner: Lattice[A]
-  // ) extends BoundedLattice[F[A]] {
-  //   import cats.syntax.partialOrder._
-  //   import cats.syntax.unorderedFoldable._
-
-  //   private def reduce(acc: F[A], a: A): F[A] = acc.filterNot(_ < a)
-
-  //   private def compress[A](a: A, b: A)(
-  //     implicit
-  //     semilattice: Semilattice[A],
-  //     partialOrder: PartialOrder[A]
-  //   ): A = {
-  //     partialOrder.pmin(a, b).getOrElse(semilattice.combine(a, b))
-  //   }
-
-
-  //   (
-  //     (1 2 3)
-  //     (2 4)
-  //   )
-  //   (
-  //     (2 3 4)
-  //     (1 3)
-  //   )
-
-  //   def meet(a: Set[Set[Int]], b: Set[Set[Int]]): Set[Set[Int]] = {
-  //     def reduce(acc: Set[Set[Int]], set: Set[Int]) = acc.filterNot(_ < set)
-
-  //     outer.combineAll(compress)
-  //   }
-
-  //   def join(a: Set[Set[Int]], b: Set[Set[Int]]): Set[Set[Int]] = {
-  //     def reduce(acc: Set[Set[Int]], set: Set[Int]) = acc.filterNot(_ > set)
-
-  //     a.foldLeft(b)(reduce) | b.foldLeft(a)(reduce) // This is xor!!!
-  //   }
-
-
-  //   def join(lhs: F[A], rhs: F[A]): F[A]
-  //     val semilattice = outer.joinSemilattice
-  //     val partialOrder = inner.joinSemilattice.asJoinPartialOrder(setEq)
-
-  //     val values = outer.combine(lhs.foldLeft(rhs)(reduce), rhs.foldLeft(lhs)(reduce))
-  //     inner.combineAll(values)
-
-  //     implicit val partialOrder = setLattice.meetSemilattice.asJoinPartialOrder(setEq)
-
-  //     partialOrder.pmin(a, b).getOrElse(semilattice.combine(lhs, rhs))
-  //   }
-
-  //   def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-  //     val partialOrder = inner.meetSemilattice.asJoinPartialOrder(setEq)
-
-  //     And(compress(Or.create(lhs).values, Or.create(rhs).values))
-  //   }
-  // }
-
-  // class TreeLattice[A](
-  //   implicit
-  //   lattice: Lattice[A]
-  // ) extends BoundedLattice[Tree[A]] {
-  //   // Set(1, 2), Set(Set(1) -> Set(1)
-  //   // Set(1, 2), Set(3) -> Set(1, 2), Set(3)
-
-  //   // (or
-  //   //   (and
-  //   //     (id 1)
-  //   //     (or
-  //   //       (id 2)
-  //   //       (id 3)
-  //   //     )
-  //   //   )
-  //   // )
-
-  //   // def combine(lhs: A, rhs: A): A = {
-  //   //   partialOrder.pmin(lhs, rhs).getOrElse(semilattice.combine(lhs, rhs))
-  //   // }
-
-  //   def zero: Tree[A] = Or(setLattice.zero) // Nothing matches
-  //   def one: Tree[A] = And(setLattice.zero) // Everything matches
-
-  //   def join(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-  //     def create(tree: Or[A]): Or[A] = {
-  //       Or(
-  //         Or.flatten(Or.create(tree)).values.map(
-  //           value => And.flatten(And.create(value))
-  //         )
-  //       )
-  //     }
-
-  //     val lOr = create(lhs)
-  //     val rOr = create(rhs)
-
-  //     implicit val semilattice = lattice.joinSemilattice
-  //     implicit val partialOrder = setLattice.meetSemilattice.asJoinPartialOrder(setEq)
-
-  //     partialOrder.pmin(a, b).getOrElse(semilattice.combine(lhs, rhs))
-  //   }
-
-  //   def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-  //     def create(tree: And[A]): And[A] = {
-  //       And(
-  //         And.flatten(And.create(tree)).values.map(
-  //           value => Or.flatten(Or.create(value))
-  //         )
-  //       )
-  //     }
-
-  //     implicit val semilattice = setLattice.joinSemilattice
-  //     implicit val partialOrder = setLattice.joinSemilattice.asJoinPartialOrder(setEq)
-
-  //     And(compress(Or.create(lhs).values, Or.create(rhs).values))
-  //   }
-  // }
-
-  //   class PartialOrderLattice[A](
-//     implicit
-//     lattice: Lattice[A]
-//   ) extends BoundedSemilattice[A] {
-//     // Set(1, 2), Set(Set(1) -> Set(1)
-//     // Set(1, 2), Set(3) -> Set(1, 2), Set(3)
-
-//     def combine(lhs: A, rhs: A): A = {
-//       partialOrder.pmin(a, b).getOrElse(semilattice.combine(lhs, rhs))
-//     }
-
-//     def one: Tree[A] = And(setLattice.zero) // Everything matches
-//     def zero: Tree[A] = Or(setLattice.zero) // Nothing matches
-
-//     def join(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-//       implicit val semilattice = lattice.joinSemilattice
-//       implicit val partialOrder = setLattice.meetSemilattice.asJoinPartialOrder(setEq)
-
-//       partialOrder.pmin(a, b).getOrElse(semilattice.combine(lhs, rhs))
-//     }
-
-//     def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-//       implicit val semilattice = setLattice.joinSemilattice
-//       implicit val partialOrder = setLattice.joinSemilattice.asJoinPartialOrder(setEq)
-
-//       And(compress(Or.create(lhs).values, Or.create(rhs).values))
-//     }
-//   }
-
-//   class PartialOrderLattice[F[_], A](
-//     implicit
-//     fa: BoundedSemilattice[F[A]],
-//     a: Lattice[A]
-//   ) extends BoundedSemilattice[F[A]] {
-//     def zero: F[A] = semilattice.zero // Set.empty
-
-//     // Set(Set(1, 2)), Set(Set(1)) -> Set(Set(1))
-//     // Set(Set(1, 2)), Set(Set(3)) -> Set(Set(1, 2), Set(3))
-
-//     def combine(lhs: F[A], rhs: F[A]): F[A] = {
-//       partialOrder.pmin(a, b).getOrElse(semilattice.combine(lhs, rhs))
-//     }
-
-//     def one: Tree[A] = And(setLattice.zero) // Everything matches
-//     def zero: Tree[A] = Or(setLattice.zero) // Nothing matches
-
-//     def join(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-//       implicit val semilattice = setLattice.joinSemilattice
-//       implicit val partialOrder = setLattice.meetSemilattice.asJoinPartialOrder(setEq)
-
-//       Or(compress(And.create(lhs).values, And.create(rhs).values))
-//     }
-
-//     def meet(lhs: Tree[A], rhs: Tree[A]): Tree[A] = {
-//       implicit val semilattice = setLattice.joinSemilattice
-//       implicit val partialOrder = setLattice.joinSemilattice.asJoinPartialOrder(setEq)
-
-//       And(compress(Or.create(lhs).values, Or.create(rhs).values))
-//     }
-//   }
 }

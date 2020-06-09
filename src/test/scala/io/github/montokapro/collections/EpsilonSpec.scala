@@ -343,11 +343,168 @@ class EpsilonSpec extends FunSpec {
       }
     }
 
+    describe("partialOrder") {
+      def leaf(a: Int): Tree[Int] = Tree.leaf(a)
+      def or(as: Tree[Int]*): Tree[Int] = Tree.or(as.toSet)
+      def and(as: Tree[Int]*): Tree[Int] = Tree.and(as.toSet)
+
+      import Tree.partialOrder
+      import cats.kernel.Comparison._
+      import cats.implicits._
+      import cats.syntax._
+
+      describe("leaf") {
+        it("should compare equal") {
+          assert(partialOrder.partialComparison(leaf(1), leaf(1)) == Some(EqualTo))
+        }
+
+        it("should compare unequal") {
+          assert(partialOrder.partialComparison(leaf(1), leaf(2)) == None)
+        }
+      }
+
+      describe("or") {
+        it("should compare shallow") {
+          val less = or(
+            leaf(1),
+            leaf(2)
+          )
+          val more = or(
+            leaf(1),
+            leaf(2),
+            leaf(3)
+          )
+          assert(more > less)
+        }
+
+        it("should compare leaf") {
+          val less = leaf(1)
+          val more = or(
+            leaf(1),
+            leaf(2)
+          )
+          assert(more > less)
+        }
+
+        it("should compare nested") {
+          val less = or(
+            leaf(1),
+            and(
+              leaf(2),
+              leaf(3)
+            )
+          )
+          val more = or(
+            leaf(1),
+            leaf(2),
+            leaf(3)
+          )
+          assert(more > less)
+        }
+
+        it("should compare complex") {
+          val less = or(
+            leaf(1),
+            and(
+              leaf(2),
+              leaf(3),
+              leaf(4)
+            )
+          )
+          val more = or(
+            leaf(1),
+            leaf(2),
+            and(
+              leaf(3),
+              leaf(4)
+            )
+          )
+          assert(more > less)
+        }
+      }
+
+      describe("and") {
+        it("should compare shallow") {
+          val less = and(
+            leaf(1),
+            leaf(2)
+          )
+          val more = and(
+            leaf(1),
+            leaf(2),
+            leaf(3)
+          )
+          assert(more > less)
+        }
+
+        it("should compare leaf") {
+          val less = leaf(1)
+          val more = and(
+            leaf(1),
+            leaf(2)
+          )
+          assert(more > less)
+        }
+
+        it("should compare nested") {
+          val less = and(
+            leaf(1),
+            or(
+              leaf(2),
+              leaf(3)
+            )
+          )
+          val more = and(
+            leaf(1),
+            leaf(2),
+            leaf(3)
+          )
+          assert(more > less)
+        }
+
+        it("should compare complex") {
+          val less = and(
+            leaf(1),
+            or(
+              leaf(2),
+              leaf(3),
+              leaf(4)
+            )
+          )
+          val more = and(
+            leaf(1),
+            leaf(2),
+            or(
+              leaf(3),
+              leaf(4)
+            )
+          )
+          assert(more > less)
+        }
+      }
+    }
+
+    describe("flatten") {
+      def leaf(a: Int): Tree[Int] = Tree.leaf(a)
+      def or(as: Tree[Int]*): Tree[Int] = Tree.or(as.toSet)
+      def and(as: Tree[Int]*): Tree[Int] = Tree.and(as.toSet)
+
+      it("should flatten single") {
+        assert(Tree.flatten(or(leaf(1))) == leaf(1))
+        assert(Tree.flatten(and(leaf(1))) == leaf(1))
+      }
+
+      it("should flatten inner") {
+        assert(Tree.flatten(or(and(leaf(1)), and(leaf(2)))) == or(leaf(1), leaf(2)))
+        assert(Tree.flatten(and(or(leaf(1)), or(leaf(2)))) == and(leaf(1), leaf(2)))
+      }
+    }
+
     describe("or") {
       def leaf(a: Int): Tree[Int] = Tree.leaf(a)
       def or(as: Tree[Int]*): Or[Int] = Or(as.toSet)
 
-      it("should flatten") {
+      it("should flatten distinct") {
         val actual = or(
           leaf(1),
           or(
@@ -359,6 +516,21 @@ class EpsilonSpec extends FunSpec {
           leaf(1),
           leaf(2),
           leaf(3)
+        )
+        assert(actual == expected)
+      }
+
+      it("should flatten comparable") {
+        val actual = or(
+          leaf(1),
+          or(
+            leaf(1),
+            leaf(2)
+          )
+        ).flatten
+        val expected = or(
+          leaf(1),
+          leaf(2)
         )
         assert(actual == expected)
       }
@@ -376,11 +548,32 @@ class EpsilonSpec extends FunSpec {
             leaf(3)
           )
         ).flatten
+        // This makes sense for properties, but not ids
         val expected = and(
           leaf(1),
           leaf(2),
           leaf(3)
         )
+        // val expected = and()
+        assert(actual == expected)
+      }
+
+      it("should flatten comparable") {
+        val actual = and(
+          leaf(1),
+          and(
+            leaf(1),
+            leaf(2)
+          )
+        ).flatten
+        // This makes sense for properties, but not ids
+        val expected = and(
+          leaf(1),
+          leaf(2)
+        )
+        // val expected = and(
+        //   leaf(1)
+        // )
         assert(actual == expected)
       }
     }
@@ -448,71 +641,65 @@ class EpsilonSpec extends FunSpec {
         or(
           and(
             leaf(1),
-            leaf(2),
-            leaf(3),
             and(
               or(
-                leaf(5),
-                leaf(6)
+                leaf(2),
+                leaf(3)
               ),
-              leaf(7)
+              leaf(4)
             )
           ),
           or(
             and(
-              leaf(3),
-              leaf(4)
-            ),
-            and(
-              leaf(5),
-              leaf(6)
+              leaf(2),
+              or(
+                leaf(3),
+                leaf(4),
+                leaf(5)
+              )
             )
           )
         ),
         or(
           or(
             and(
-              leaf(1),
-              leaf(2)
-            ),
-            and(
-              leaf(6),
-              leaf(7)
+              or(
+                leaf(1),
+                leaf(2),
+                leaf(3)
+              ),
+              leaf(4)
             )
           ),
-          or(
+          and(
             and(
               leaf(2),
-              leaf(3),
-              leaf(4)
-            ),
-            and(
-              leaf(5),
               or(
-                leaf(6),
-                leaf(7)
+                leaf(3),
+                leaf(4)
               )
-            )
+            ),
+            leaf(5)
           )
         )
       )
       val expected =
         or(
           and(
-            leaf(1),
-            leaf(2)
-          ),
-          and(
-            leaf(3),
+            or(
+              leaf(1),
+              leaf(2),
+              leaf(3)
+            ),
             leaf(4)
           ),
           and(
-            leaf(5),
-            leaf(6)
-          ),
-          and(
-            leaf(6),
-            leaf(7)
+            leaf(2),
+            or(
+              leaf(3),
+              leaf(4),
+              leaf(5)
+            )
           )
         )
       assert(actual == expected)
@@ -554,20 +741,20 @@ class EpsilonSpec extends FunSpec {
       )
       // This is an alternate sensical interpretation
       // This makes sense if these are properties, not ids
-      // val expected =
-      //   and(
-      //     or(
-      //       leaf(1),
-      //       leaf(2),
-      //       leaf(3)
-      //     ),
-      //     or(
-      //       leaf(3),
-      //       leaf(4),
-      //       leaf(5)
-      //     )
-      //   )
-      val expected = and()
+      val expected =
+        and(
+          or(
+            leaf(1),
+            leaf(2),
+            leaf(3)
+          ),
+          or(
+            leaf(2),
+            leaf(3),
+            leaf(4)
+          )
+        )
+      // val expected = and()
       assert(actual == expected)
     }
   }
