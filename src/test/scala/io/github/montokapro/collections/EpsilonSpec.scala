@@ -500,6 +500,32 @@ class EpsilonSpec extends FunSpec {
       }
     }
 
+    describe("flatten") {
+      def leaf(a: Int): Tree[Int] = Tree.leaf(a)
+      def or(as: Tree[Int]*): Tree[Int] = Tree.or(as.toSet)
+      def and(as: Tree[Int]*): Tree[Int] = Tree.and(as.toSet)
+
+      it("should not reduce leaf") {
+        assert(Tree.reduce(leaf(1)) == leaf(1))
+      }
+
+      it("should not reduce empty") {
+        assert(Tree.reduce(or()) == or())
+        assert(Tree.reduce(and()) == and())
+      }
+
+      it("should reduce single") {
+        assert(Tree.reduce(or(leaf(1))) == leaf(1))
+        assert(Tree.reduce(and(leaf(1))) == leaf(1))
+      }
+
+      it("should reduce complex") {
+        assert(Tree.reduce(or(and(leaf(1), leaf(2)), and(leaf(2)))) == leaf(2))
+        assert(Tree.reduce(and(or(leaf(1), leaf(2)), or(leaf(2)))) == or(leaf(1), leaf(2)))
+      }
+    }
+
+
     describe("or") {
       def leaf(a: Int): Tree[Int] = Tree.leaf(a)
       def or(as: Tree[Int]*): Or[Int] = Or(as.toSet)

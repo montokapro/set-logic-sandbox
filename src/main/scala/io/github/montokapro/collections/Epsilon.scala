@@ -95,11 +95,30 @@ object Epsilon {
 
 
     def reduce[A](tree: Tree[A]): Tree[A] = {
+      val lattice = new TreeLattice[A]
+      import lattice._
+
       tree match {
-        case (or: Or[A]) =>
-          or
-        case (and: And[A]) =>
-          and
+        case (Or(values)) =>
+          val set: Set[Tree[A]] = Or.create( // .create is no-op
+            joinSemilattice.combineAllOption(Or.flatten(values.map(reduce)))
+              .getOrElse(or(Set.empty[Tree[A]]))
+          ).values.map(flatten)
+          if (set.size == 1) {
+            set.head
+          } else {
+            or(set)
+          }
+        case (And(values)) =>
+          val set: Set[Tree[A]] = And.create( // .create is no-op
+            meetSemilattice.combineAllOption(And.flatten(values.map(reduce)))
+              .getOrElse(and(Set.empty[Tree[A]]))
+          ).values.map(flatten)
+          if (set.size == 1) {
+            set.head
+          } else {
+            and(set)
+          }
         case (leaf: Leaf[A]) =>
           leaf
       }
