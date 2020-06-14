@@ -1,10 +1,6 @@
 package io.github.montokapro.collections
 
-// import cats.CommutativeMonad
-// import scala.annotation.tailrec
-// import cats.{Applicative, Traverse}
 import cats.Functor
-// import cats.kernel.Eq
 import cats.kernel.PartialOrder
 import algebra.lattice.Lattice
 
@@ -61,39 +57,6 @@ object Zeta {
           }
       }
   }
-
-  // import cats.kernel.Eq
-  // import cats.kernel.Semilattice
-  // class InverseSetLattice[A](
-  //   inverse: Inverse[A],
-  //   eq: Eq[A]
-  // ) extends Semilattice[Set[A]] {
-  //   def combine(a: Set[A], b: Set[A]): Set[A] = {
-  //     val aI = inverse.inverse(a)
-  //     val bI = inverse.inverse(b)
-
-  //     val a2 = if (a > bI) {
-  //       a -- bI
-  //     } else {
-  //       a
-  //     }
-
-  //     val b2 = if (b > aI) {
-  //       b -- aI
-  //     } else {
-  //       b
-  //     }
-
-  //     def reduce(fa: Set[A], a: A): Set[A] =
-  //       fa.filterNot(eq.eqv(_, a))
-
-  //     def infininum = reduce(eq) _
-
-  //     a.foldLeft(b)(infininum) | b.foldLeft(a)(infininum)
-  //   }
-  // }
-
-  // Consider using CommutativeGroup, with pmax and pmin as the combine functions
 
   class PosetLattice[A](
     po: PartialOrder[A],
@@ -173,4 +136,12 @@ object Zeta {
       )
     }
   }
+
+  // Idea:
+  //
+  // What if we sorted our lists by set size?
+  // Perhaps we could avoid folding over the full list.
+  //
+  // We also could optimize the partial order computation
+  // The GenBool instance is correct but not the most efficient
 }
