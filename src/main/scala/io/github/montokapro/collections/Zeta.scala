@@ -11,11 +11,7 @@ object Zeta {
   }
 
   object Inverse {
-    /**
-      * Convert an implicit `Inverse[B]` to an `Inverse[A]` using the given
-      * function `f`.
-      */
-    def by[F[_], @sp A, @sp B](
+    def by[F[_], @sp A](
       implicit
       functor: Functor[F],
       ev: Inverse[A]
