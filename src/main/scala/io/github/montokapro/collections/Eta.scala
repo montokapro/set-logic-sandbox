@@ -3,7 +3,8 @@ package io.github.montokapro.collections
 import cats.Functor
 import cats.kernel.PartialOrder
 import algebra.lattice.Lattice
-import scala.annotation.tailrec
+import algebra.lattice.Bool
+import algebra.lattice.GenBool
 
 object Eta {
   import scala.{specialized => sp}
@@ -56,41 +57,64 @@ object Eta {
   }
 
   // Join and meet are two subtly different ways of finding common factors
-  class PosetLattice[A](
+  //
+  // Until we represent features like ids, only join is useful
+  class PosetGenBool[A](
     po: PartialOrder[A],
-  ) extends Lattice[List[A]] {
+  ) extends GenBool[List[A]] {
     import cats.instances.list._
 
-    def join(a: List[A], b: List[A]): List[A] = {
-      a.foldLeft(b)((c, d) => c.filterNot(po.gt(_, d))).union(
+    def zero: List[A] = List.empty
+
+    def or(a: List[A], b: List[A]): List[A] = {
+      val r = a.foldLeft(b)((c, d) => c.filterNot(po.gt(_, d))).union(
         b.foldLeft(a)((c, d) => c.filterNot(po.gteqv(_, d)))
       )
+      println(s"pgb-join $a $b -> $r")
+      r
     }
 
-    def meet(a: List[A], b: List[A]): List[A] = {
-      a.foldLeft(b)((c, d) => c.filter(po.lt(_, d))).union(
+    def and(a: List[A], b: List[A]): List[A] = {
+      val r = a.foldLeft(b)((c, d) => c.filter(po.lt(_, d))).union(
         b.foldLeft(a)((c, d) => c.filter(po.lteqv(_, d)))
       )
+      println(s"pgb-meet $a $b -> $r")
+      r
+    }
+
+    def without(a: List[A], b: List[A]): List[A] = {
+      val r = b.foldLeft(a)((c, d) => c.filterNot(po.gt(_, d)))
+      println(s"pgb-without $a $b -> $r")
+      r
     }
   }
 
   // This is probably not a real group... run the laws suite
+  //
+  // There probably should be a full fledged bool,
+  // using implication alongside without
   import cats.kernel.Group
   import algebra.lattice.GenBool
   class PosetGroup[A](
-    inverse: Inverse[A],
+    in: Inverse[A],
     bool: GenBool[A]
   ) extends Group[List[A]] with Inverse[List[A]] {
     import cats.instances.list._
 
     def inverse(a: List[A]): List[A] =
-      Functor[List].map(a)(inverse.inverse)
+      Functor[List].map(a)(in.inverse)
 
     def empty: List[A] = List.empty
 
     // TODO: is this associative? Otherwise consider a loop or quasigroup.
     def combine(a: List[A], b: List[A]): List[A] = {
-      a.foldLeft(b)((fc, c) => fc.map(bool.without(_, inverse.inverse(c))))
+      val r = a.foldLeft(b)((fc, c) => fc.map(d => {
+        val r2 = bool.without(d, in.inverse(c))
+        println(s"b-wto $d $c -> $d ${in.inverse(c)} -> $r2")
+        r2
+      }))
+      println(s"pg-cmb $a $b -> $r")
+      r
     }
   }
 
@@ -107,6 +131,9 @@ object Eta {
   // The first would define lattice behavior.
   // The second would allow an optimization by defining deterministic memory layout.
   //   (this could be an Order as well, if we wanted to enforce efficiency)
+  //
+  // Likely only join is useful here,
+  // until features like id uniqueness are implemented
   import cats.kernel.Eq
   import algebra.lattice.GenBool
   class InversePosetLattice[A](
@@ -117,21 +144,25 @@ object Eta {
     import cats.instances.list._
 
     private val po = bool.joinSemilattice.asJoinPartialOrder(eq)
-    private val posetLattice = new PosetLattice(po)
+    private val posetGenBool = new PosetGenBool(po)
     private val posetGroup = new PosetGroup(inverse, bool)
 
     def join(a: List[A], b: List[A]): List[A] = {
-      posetLattice.join(
+      val r = posetGenBool.join(
         posetGroup.combine(a, b),
         posetGroup.combine(b, a)
       )
+      println(s"ipl-join $a $b -> $r")
+      r
     }
 
     def meet(a: List[A], b: List[A]): List[A] = {
-      posetLattice.meet(
+      val r = posetGenBool.meet(
         posetGroup.combine(a, b),
         posetGroup.combine(b, a)
       )
+      println(s"ipl-meet $a $b -> $r")
+      r
     }
   }
 
@@ -166,8 +197,8 @@ object Eta {
   ) extends Inverse[Tree[A]] {
     def inverse(tree: Tree[A]): Tree[A] = {
       tree match {
-        case Or(values) => Or(values.map(inverse))
-        case And(values) => And(values.map(inverse))
+        case Or(values) => And(values.map(inverse))
+        case And(values) => Or(values.map(inverse))
         case Leaf(value) => Leaf(ev.inverse(value))
       }
     }
@@ -253,42 +284,80 @@ object Eta {
       }
   }
 
-  // Assumes trees are in a normalized form; uses strict equality
-  import algebra.lattice.Bool
-  class PoTreeBool[A](
-    in: Inverse[Tree[A]],
+  class PoOrGenBool[A](
     po: PartialOrder[Tree[A]]
-  ) extends Bool[Tree[A]] {
+  ) extends GenBool[Tree[A]] {
     import cats.kernel.Comparison._
 
-    private val lattice = new PosetLattice[Tree[A]](po)
+    private val genBool = new PosetGenBool[Tree[A]](po)
 
-    def zero = Or(List.empty) // And?
-
-    def one = And(List.empty) // Or?
+    def zero: Tree[A] = Or(List.empty)
 
     def or(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
-      case (l: ToOr, r: ToOr) => Or(lattice.join(
+      case (l: ToOr, r: ToOr) => println(s"or - ToOr $l $r"); Or(genBool.join(
         Or.create(l).values, Or.create(r).values
       ))
-      case (l, r) => And(lattice.meet(
+      case (l, r) => println(s"or - elseAnd $l $r"); And(genBool.join(
         And.create(l).values, And.create(r).values
       ))
     }
 
     def and(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
-      case (l: ToAnd, r: ToAnd) => And(lattice.meet(
+      case (l: ToOr, r: ToOr) => println(s"and - ToOr $l $r"); Or(genBool.meet(
+        Or.create(l).values, Or.create(r).values
+      ))
+      case (l, r) => println(s"and - elseAnd $l $r"); And(genBool.meet(
         And.create(l).values, And.create(r).values
       ))
-      case (l, r) => Or(lattice.join(
+    }
+
+    def without(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
+      case (l: ToOr, r: ToOr) => println(s"without - ToOr $l $r"); Or(genBool.without(
+        Or.create(l).values, Or.create(r).values
+      ))
+      case (l, r) => println(s"without - elseAnd $l $r"); And(genBool.without(
+        And.create(l).values, And.create(r).values
+      ))
+    }
+  }
+
+  class PoAndGenBool[A](
+    po: PartialOrder[Tree[A]]
+  ) extends GenBool[Tree[A]] {
+    import cats.kernel.Comparison._
+
+    private val genBool = new PosetGenBool[Tree[A]](po)
+
+    def zero: Tree[A] = And(List.empty)
+
+    def or(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
+      case (l: ToAnd, r: ToAnd) => println(s"or - toAnd $l $r"); And(genBool.join(
+        And.create(l).values, And.create(r).values
+      ))
+      case (l, r) => println(s"or - elseOr $l $r"); Or(genBool.join(
         Or.create(l).values, Or.create(r).values
       ))
     }
 
-    def complement(a: Tree[A]): Tree[A] = in.inverse(a)
+    def and(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
+      case (l: ToAnd, r: ToAnd) => println(s"and - toAnd $l $r"); And(genBool.meet(
+        And.create(l).values, And.create(r).values
+      ))
+      case (l, r) => println(s"and - elseOr $l $r"); Or(genBool.meet(
+        Or.create(l).values, Or.create(r).values
+      ))
+    }
+
+    def without(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
+      case (l: ToAnd, r: ToAnd) => println(s"without - toAnd $l $r"); And(genBool.without(
+        And.create(l).values, And.create(r).values
+      ))
+      case (l, r) => println(s"without - elseOr $l $r"); Or(genBool.without(
+        Or.create(l).values, Or.create(r).values
+      ))
+    }
   }
 
-  import algebra.lattice.Bool
   class InversePoTreeBool[A](
     in: Inverse[A],
     po: PartialOrder[A]
@@ -297,27 +366,29 @@ object Eta {
 
     private val treeIn = new TreeInverse(in)
     private val treePo = new TreePartialOrderInstances(po).treePo
-    private val bool = new PoTreeBool(treeIn, treePo)
-    private val lattice = new InversePosetLattice[Tree[A]](treeIn, bool, treePo)
+    private val orGenBool = new PoOrGenBool(treePo)
+    private val andGenBool = new PoAndGenBool(treePo)
+    private val orLattice = new InversePosetLattice[Tree[A]](treeIn, orGenBool, treePo)
+    private val andLattice = new InversePosetLattice[Tree[A]](treeIn, andGenBool, treePo)
 
-    def zero = bool.zero
+    def zero = orGenBool.zero
 
-    def one = bool.one
+    def one = andGenBool.zero
 
     def or(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
-      case (l: ToOr, r: ToOr) => Or(lattice.join(
+      case (l: ToOr, r: ToOr) => Or(orLattice.join(
         Or.create(l).values, Or.create(r).values
       ))
-      case (l, r) => And(lattice.meet(
+      case (l, r) => And(andLattice.join(
         And.create(l).values, And.create(r).values
       ))
     }
 
     def and(a: Tree[A], b: Tree[A]): Tree[A] = (a, b) match {
-      case (l: ToAnd, r: ToAnd) => And(lattice.meet(
+      case (l: ToAnd, r: ToAnd) => And(andLattice.join(
         And.create(l).values, And.create(r).values
       ))
-      case (l, r) => Or(lattice.join(
+      case (l, r) => Or(orLattice.join(
         Or.create(l).values, Or.create(r).values
       ))
     }

@@ -93,7 +93,6 @@ object Epsilon {
       }
     }
 
-
     def reduce[A](tree: Tree[A]): Tree[A] = {
       val lattice = new TreeLattice[A]
       import lattice._
