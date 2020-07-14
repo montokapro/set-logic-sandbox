@@ -100,7 +100,7 @@ class ZetaSpec extends FunSpec {
                 Neg(1),
                 Neg(2),
                 Pos(3),
-                Neg(4),
+                Neg(4)
               )
             ),
             List(
