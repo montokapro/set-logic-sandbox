@@ -1,7 +1,6 @@
 package potree
 
 import org.scalatest.FunSpec
-import cats.kernel.instances.int._
 import cats.kernel.Eq
 import cats.kernel.PartialOrder
 

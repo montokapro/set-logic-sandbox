@@ -52,9 +52,9 @@ object TreeMonad {
                   val (head, tail) = acc.splitAt(size)
                   Or(head) :: tail
                 }
-                case Left((false, size)) => {
+                case Left((true, size)) => {
                   val (head, tail) = acc.splitAt(size)
-                  Or(head) :: tail
+                  And(head) :: tail
                 }
                 case Right(value) => value :: acc
               }

@@ -33,12 +33,6 @@ class PoTreeBool[A](
       } else {
         Or(List(Leaf(l), Leaf(r)))
       }
-    // case (l: ToOr, r: ToOr) => println(s"or - toOr $l $r"); Tree.flatten(Or(orSemigroup.combine(
-    //   Or.create(l).values, Or.create(r).values
-    // )))
-    // case (l, r) => println(s"or - elseOr $l $r"); Tree.flatten(Or(orSemigroup.combine(
-    //   Or.create(l).values, Or.create(r).values
-    // )))
     case (l, r) => Tree.flatten(Or(orSemigroup.combine(
       Or.create(l).values,
       Or.create(r).values
@@ -58,12 +52,6 @@ class PoTreeBool[A](
       } else {
         And(List(Leaf(l), Leaf(r)))
       }
-    // case (l: ToAnd, r: ToAnd) => println(s"and - ToAnd $l $r"); Tree.flatten(And(andSemigroup.combine(
-    //   And.create(l).values, And.create(r).values
-    // )))
-    // case (l, r) => println(s"and - elseAnd $l $r"); Tree.flatten(And(andSemigroup.combine(
-    //   And.create(l).values, And.create(r).values
-    // )))
     case (l, r) => Tree.flatten(And(andSemigroup.combine(
       And.create(l).values,
       And.create(r).values
